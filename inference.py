@@ -10,7 +10,7 @@ from basicsr.utils.download_util import load_file_from_url
 
 def get_parser(**parser_kwargs):
     parser = argparse.ArgumentParser(**parser_kwargs)
-    parser.add_argument("-i", "--in_path", type=str, default="", help="Input path.")
+    parser.add_argument("-i", "--in_path", type=str, default="/home/muahmmad/projects/Image_enhancement/dataset/Enhancement_Dataset", help="Input path.")
     parser.add_argument("-o", "--out_path", type=str, default="./results", help="Output path.")
     parser.add_argument("-r", "--ref_path", type=str, default=None, help="reference image")
     parser.add_argument("-s", "--steps", type=int, default=15, help="Diffusion length. (The number of steps that the model trained on.)")
