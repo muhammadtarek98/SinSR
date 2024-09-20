@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 # Power by Zongsheng Yue 2022-06-09 14:59:55
-
 import torch
 import random
 import numpy as np
 from einops import rearrange
-
 def batch_inpainging_from_grad(im_in, mask, gradx, grady):
     '''
     Recovering from gradient for batch data (torch tensro).

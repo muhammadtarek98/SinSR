@@ -4,9 +4,7 @@ import random
 import time
 import torch
 from os import path as osp
-
-from .dist_util import master_only
-
+from .dist_util import *
 
 def set_random_seed(seed):
     """Set random seeds."""

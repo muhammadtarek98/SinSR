@@ -4,9 +4,7 @@
 
 import math
 import torch
-from pathlib import Path
 from collections import OrderedDict
-import torch.nn.functional as F
 
 def calculate_parameters(net):
     out = 0
@@ -18,7 +16,7 @@ def pad_input(x, mod):
     h, w = x.shape[-2:]
     bottom = int(math.ceil(h/mod)*mod -h)
     right = int(math.ceil(w/mod)*mod - w)
-    x_pad = F.pad(x, pad=(0, right, 0, bottom), mode='reflect')
+    x_pad = torch.nn.functional.pad(x, pad=(0, right, 0, bottom), mode='reflect')
     return x_pad
 
 def forward_chop(net, x, net_kwargs=None, scale=1, shave=10, min_size=160000):

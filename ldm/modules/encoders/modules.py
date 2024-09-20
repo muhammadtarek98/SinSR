@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 from transformers import T5Tokenizer, T5EncoderModel, CLIPTokenizer, CLIPTextModel
 
-import open_clip
+from SinSR.ldm.modules.diffusionmodules.openaimodel import open_clip
 from ldm.util import default, count_params
 
 

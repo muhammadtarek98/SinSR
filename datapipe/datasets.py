@@ -9,12 +9,12 @@ import torchvision as thv
 from torch.utils.data import Dataset
 from albumentations import SmallestMaxSize
 
-from utils import util_sisr
-from utils import util_image
-from utils import util_common
+from SinSR.utils import util_sisr
+from SinSR.utils import util_image
+from SinSR.utils import util_common
 
-from basicsr.data.transforms import augment
-from basicsr.data.realesrgan_dataset import RealESRGANDataset
+from SinSR.basicsr.data.transforms import augment
+from SinSR.basicsr.data.realesrgan_dataset import RealESRGANDataset
 from .ffhq_degradation_dataset import FFHQDegradationDataset
 from .degradation_bsrgan.bsrgan_light import degradation_bsrgan_variant, degradation_bsrgan
 

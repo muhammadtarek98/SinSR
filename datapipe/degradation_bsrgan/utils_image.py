@@ -6,12 +6,8 @@ import torch
 import cv2
 from torchvision.utils import make_grid
 from datetime import datetime
-#import matplotlib.pyplot as plt   # TODO: check with Dominik, also bsrgan.py vs bsrgan_light.py
-
-
+from matplotlib import pyplot as plt
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-
-
 '''
 # --------------------------------------------
 # Kai Zhang (github: https://github.com/cszn)
@@ -21,14 +17,9 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # https://github.com/xinntao/BasicSR
 # --------------------------------------------
 '''
-
-
 IMG_EXTENSIONS = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.tif']
-
-
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
-
 
 def get_timestamp():
     return datetime.now().strftime('%y%m%d-%H%M%S')

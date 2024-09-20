@@ -3,7 +3,6 @@
 # Power by Zongsheng Yue 2021-11-24 15:07:43
 
 import argparse
-
 def update_args(args_json, args_parser):
     for arg in vars(args_parser):
         args_json[arg] = getattr(args_parser, arg)

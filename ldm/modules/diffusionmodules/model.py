@@ -5,9 +5,7 @@ import torch.nn as nn
 import numpy as np
 from einops import rearrange
 from typing import Optional, Any
-
-from ldm.modules.attention import MemoryEfficientCrossAttention
-
+from SinSR.ldm.modules.attention import MemoryEfficientCrossAttention
 try:
     import xformers
     import xformers.ops

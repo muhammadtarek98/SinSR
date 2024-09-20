@@ -4,15 +4,14 @@ Various utilities for neural networks.
 
 import math
 
-import torch as th
-import torch.nn as nn
+import torch
 
-class SiLU(nn.Module):
+class SiLU(torch.nn.Module):
     def forward(self, x):
-        return x * th.sigmoid(x)
+        return x * torch.sigmoid(x)
 
 
-class GroupNorm32(nn.GroupNorm):
+class GroupNorm32(torch.nn.GroupNorm):
     def forward(self, x):
         return super().forward(x.float()).type(x.dtype)
 
@@ -22,29 +21,29 @@ def conv_nd(dims, *args, **kwargs):
     Create a 1D, 2D, or 3D convolution module.
     """
     if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
+        return torch.nn.Conv1d(*args, **kwargs)
     elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
+        return torch.nn.Conv2d(*args, **kwargs)
     elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
+        return torch.nn.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
 def linear(*args, **kwargs):
     """
     Create a linear module.
     """
-    return nn.Linear(*args, **kwargs)
+    return torch.nn.Linear(*args, **kwargs)
 
 def avg_pool_nd(dims, *args, **kwargs):
     """
     Create a 1D, 2D, or 3D average pooling module.
     """
     if dims == 1:
-        return nn.AvgPool1d(*args, **kwargs)
+        return torch.nn.AvgPool1d(*args, **kwargs)
     elif dims == 2:
-        return nn.AvgPool2d(*args, **kwargs)
+        return torch.nn.AvgPool2d(*args, **kwargs)
     elif dims == 3:
-        return nn.AvgPool3d(*args, **kwargs)
+        return torch.nn.AvgPool3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
@@ -107,12 +106,12 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     :return: an [N x dim] Tensor of positional embeddings.
     """
     half = dim // 2
-    freqs = th.exp(
-        -math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half
+    freqs = torch.exp(
+        -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
     ).to(device=timesteps.device)
     args = timesteps[:, None].float() * freqs[None]                        # B x half
-    embedding = th.cat([th.cos(args), th.sin(args)], dim=-1)
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     if dim % 2:
-        embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 

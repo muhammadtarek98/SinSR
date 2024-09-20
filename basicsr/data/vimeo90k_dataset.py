@@ -2,12 +2,11 @@ import random
 import torch
 from pathlib import Path
 from torch.utils import data as data
-
-from basicsr.data.transforms import augment, paired_random_crop
-from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
-from basicsr.utils.registry import DATASET_REGISTRY
-
-
+from SinSR.basicsr.data.transforms import augment, paired_random_crop
+from SinSR.basicsr.utils.file_client import FileClient
+from SinSR.basicsr.utils.logger import get_root_logger
+from SinSR.basicsr.utils.img_util import imfrombytes, img2tensor
+from SinSR.basicsr.utils.registry import DATASET_REGISTRY
 @DATASET_REGISTRY.register()
 class Vimeo90KDataset(data.Dataset):
     """Vimeo90K dataset for training.

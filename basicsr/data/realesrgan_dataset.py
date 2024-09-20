@@ -1,26 +1,22 @@
 import cv2
 import math
 import numpy as np
-import os
-import os.path as osp
 import random
 import time
 import torch
 from pathlib import Path
-
 import albumentations
-
-import torch.nn.functional as F
 from torch.utils import data as data
-
-from basicsr.utils import DiffJPEG
-from basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
-from basicsr.data.transforms import augment
-from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
-from basicsr.utils.registry import DATASET_REGISTRY
-from basicsr.utils.img_process_util import filter2D
-from basicsr.data.transforms import paired_random_crop
-from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
+from SinSR.basicsr.utils.diffjpeg import DiffJPEG
+from SinSR.basicsr.data.degradations import circular_lowpass_kernel, random_mixed_kernels
+from SinSR.basicsr.data.transforms import augment
+from SinSR.basicsr.utils.file_client import FileClient
+from SinSR.basicsr.utils.logger import get_root_logger
+from SinSR.basicsr.utils.img_util import  imfrombytes, img2tensor
+from SinSR.basicsr.utils.registry import DATASET_REGISTRY
+from SinSR.basicsr.utils.img_process_util import filter2D
+from SinSR.basicsr.data.transforms import paired_random_crop
+from SinSR.basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
 
 def readline_txt(txt_file):
     txt_file = [txt_file, ] if isinstance(txt_file, str) else txt_file
@@ -260,7 +256,7 @@ class RealESRGANDataset(data.Dataset):
         else:
             scale = 1
         mode = random.choice(['area', 'bilinear', 'bicubic'])
-        out = F.interpolate(out, scale_factor=scale, mode=mode)
+        out = torch.nn.functional.interpolate(out, scale_factor=scale, mode=mode)
         # add noise
         gray_noise_prob = conf_degradation['gray_noise_prob']
         if random.random() < conf_degradation['gaussian_noise_prob']:
@@ -300,7 +296,7 @@ class RealESRGANDataset(data.Dataset):
             else:
                 scale = 1
             mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(
+            out = torch.nn.functional.interpolate(
                     out,
                     size=(int(ori_h / sf * scale), int(ori_w / sf * scale)),
                     mode=mode,
@@ -334,7 +330,7 @@ class RealESRGANDataset(data.Dataset):
         if random.random() < 0.5:
             # resize back + the final sinc filter
             mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(
+            out = torch.nn.functional.interpolate(
                     out,
                     size=(ori_h // sf, ori_w // sf),
                     mode=mode,
@@ -351,7 +347,7 @@ class RealESRGANDataset(data.Dataset):
             out = self.jpeger(out, quality=jpeg_p)
             # resize back + the final sinc filter
             mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(
+            out = torch.nn.functional.interpolate(
                     out,
                     size=(ori_h // sf, ori_w // sf),
                     mode=mode,

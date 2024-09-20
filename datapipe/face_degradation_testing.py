@@ -4,9 +4,8 @@
 
 import cv2
 import numpy as np
-from basicsr.data import degradations as degradations
-
-from utils import util_common
+from SinSR.basicsr.data import degradations as degradations
+from SinSR.utils import util_common
 
 def face_degradation(im, sf, sig_x, sig_y, theta, nf, qf):
     '''

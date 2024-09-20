@@ -6,26 +6,20 @@ from loguru import logger
 from copy import deepcopy
 from omegaconf import OmegaConf
 from collections import OrderedDict
-from einops import rearrange
 import copy
 from datapipe.datasets import create_dataset
-
+import pyiqa
 import torch
-import torch.nn as nn
 import torch.cuda.amp as amp
-import torch.nn.functional as F
 import torch.utils.data as udata
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torchvision.utils as vutils
-# from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
-
 from utils import util_net
 from utils import util_common
-from utils import util_image
-
-from basicsr.utils import DiffJPEG, USMSharp
+from basicsr.utils.diffjpeg import DiffJPEG
+from basicsr.utils.img_process_util import  USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.data.transforms import paired_random_crop
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
@@ -249,7 +243,6 @@ class TrainerBase:
         pass
 
     def build_iqa(self):
-        import pyiqa
         if self.rank == 0:
             self.metric_dict={}
             self.metric_dict["clipiqa"] = pyiqa.create_metric('clipiqa').cuda()
@@ -557,7 +550,7 @@ class TrainerDifIR(TrainerBase):
             else:
                 scale = 1
             mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(out, scale_factor=scale, mode=mode)
+            out = torch.nn.functional.interpolate(out, scale_factor=scale, mode=mode)
             # add noise
             gray_noise_prob = self.configs.degradation['gray_noise_prob']
             if random.random() < self.configs.degradation['gaussian_noise_prob']:
@@ -597,7 +590,7 @@ class TrainerDifIR(TrainerBase):
                 else:
                     scale = 1
                 mode = random.choice(['area', 'bilinear', 'bicubic'])
-                out = F.interpolate(
+                out = torch.nn.functional.interpolate(
                         out,
                         size=(int(ori_h / sf * scale), int(ori_w / sf * scale)),
                         mode=mode,
@@ -631,7 +624,7 @@ class TrainerDifIR(TrainerBase):
             if random.random() < 0.5:
                 # resize back + the final sinc filter
                 mode = random.choice(['area', 'bilinear', 'bicubic'])
-                out = F.interpolate(
+                out = torch.nn.functional.interpolate(
                         out,
                         size=(ori_h // sf, ori_w // sf),
                         mode=mode,
@@ -648,7 +641,7 @@ class TrainerDifIR(TrainerBase):
                 out = self.jpeger(out, quality=jpeg_p)
                 # resize back + the final sinc filter
                 mode = random.choice(['area', 'bilinear', 'bicubic'])
-                out = F.interpolate(
+                out = torch.nn.functional.interpolate(
                         out,
                         size=(ori_h // sf, ori_w // sf),
                         mode=mode,
@@ -657,7 +650,7 @@ class TrainerDifIR(TrainerBase):
 
             # resize back
             if self.configs.degradation.resize_back:
-                out = F.interpolate(out, size=(ori_h, ori_w), mode='bicubic')
+                out = torch.nn.functional.interpolate(out, size=(ori_h, ori_w), mode='bicubic')
                 temp_sf = self.configs.degradation['sf']
             else:
                 temp_sf = self.configs.degradation['sf']
@@ -759,7 +752,6 @@ class TrainerDifIR(TrainerBase):
                     params_group['lr'] *= 0.5
         else:
             pass
-
 
     def validation(self, phase='val'):
         if self.rank == 0:

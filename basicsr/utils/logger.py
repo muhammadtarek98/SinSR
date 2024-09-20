@@ -1,7 +1,6 @@
 import datetime
 import logging
 import time
-
 from .dist_util import get_dist_info, master_only
 
 initialized_logger = {}

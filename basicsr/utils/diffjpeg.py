@@ -7,8 +7,8 @@ https://dsp.stackexchange.com/questions/35339/jpeg-dct-padding/35343#35343
 import itertools
 import numpy as np
 import torch
-import torch.nn as nn
-from torch.nn import functional as F
+import cv2
+from .img_util import img2tensor, tensor2img
 
 # ------------------------ utils ------------------------#
 y_table = np.array(
@@ -16,11 +16,11 @@ y_table = np.array(
      [14, 17, 22, 29, 51, 87, 80, 62], [18, 22, 37, 56, 68, 109, 103, 77], [24, 35, 55, 64, 81, 104, 113, 92],
      [49, 64, 78, 87, 103, 121, 120, 101], [72, 92, 95, 98, 112, 100, 103, 99]],
     dtype=np.float32).T
-y_table = nn.Parameter(torch.from_numpy(y_table))
+y_table = torch.nn.Parameter(torch.from_numpy(y_table))
 c_table = np.empty((8, 8), dtype=np.float32)
 c_table.fill(99)
 c_table[:4, :4] = np.array([[17, 18, 24, 47], [18, 21, 26, 66], [24, 26, 56, 99], [47, 66, 99, 99]]).T
-c_table = nn.Parameter(torch.from_numpy(c_table))
+c_table = torch.nn.Parameter(torch.from_numpy(c_table))
 
 
 def diff_round(x):
@@ -46,7 +46,7 @@ def quality_to_factor(quality):
 
 
 # ------------------------ compression ------------------------#
-class RGB2YCbCrJpeg(nn.Module):
+class RGB2YCbCrJpeg(torch.nn.Module):
     """ Converts RGB image to YCbCr
     """
 
@@ -54,8 +54,8 @@ class RGB2YCbCrJpeg(nn.Module):
         super(RGB2YCbCrJpeg, self).__init__()
         matrix = np.array([[0.299, 0.587, 0.114], [-0.168736, -0.331264, 0.5], [0.5, -0.418688, -0.081312]],
                           dtype=np.float32).T
-        self.shift = nn.Parameter(torch.tensor([0., 128., 128.]))
-        self.matrix = nn.Parameter(torch.from_numpy(matrix))
+        self.shift = torch.nn.Parameter(torch.tensor([0., 128., 128.]))
+        self.matrix = torch.nn.Parameter(torch.from_numpy(matrix))
 
     def forward(self, image):
         """
@@ -70,7 +70,7 @@ class RGB2YCbCrJpeg(nn.Module):
         return result.view(image.shape)
 
 
-class ChromaSubsampling(nn.Module):
+class ChromaSubsampling(torch.nn.Module):
     """ Chroma subsampling on CbCr channels
     """
 
@@ -88,14 +88,14 @@ class ChromaSubsampling(nn.Module):
             cr(tensor): batch x height/2 x width/2
         """
         image_2 = image.permute(0, 3, 1, 2).clone()
-        cb = F.avg_pool2d(image_2[:, 1, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
-        cr = F.avg_pool2d(image_2[:, 2, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
+        cb = torch.nn.functional.avg_pool2d(image_2[:, 1, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
+        cr = torch.nn.functional.avg_pool2d(image_2[:, 2, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
         cb = cb.permute(0, 2, 3, 1)
         cr = cr.permute(0, 2, 3, 1)
         return image[:, :, :, 0], cb.squeeze(3), cr.squeeze(3)
 
 
-class BlockSplitting(nn.Module):
+class BlockSplitting(torch.nn.Module):
     """ Splitting image into patches
     """
 
@@ -118,7 +118,7 @@ class BlockSplitting(nn.Module):
         return image_transposed.contiguous().view(batch_size, -1, self.k, self.k)
 
 
-class DCT8x8(nn.Module):
+class DCT8x8(torch.nn.Module):
     """ Discrete Cosine Transformation
     """
 
@@ -128,8 +128,8 @@ class DCT8x8(nn.Module):
         for x, y, u, v in itertools.product(range(8), repeat=4):
             tensor[x, y, u, v] = np.cos((2 * x + 1) * u * np.pi / 16) * np.cos((2 * y + 1) * v * np.pi / 16)
         alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
-        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
-        self.scale = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha) * 0.25).float())
+        self.tensor = torch.nn.Parameter(torch.from_numpy(tensor).float())
+        self.scale = torch.nn.Parameter(torch.from_numpy(np.outer(alpha, alpha) * 0.25).float())
 
     def forward(self, image):
         """
@@ -145,7 +145,7 @@ class DCT8x8(nn.Module):
         return result
 
 
-class YQuantize(nn.Module):
+class YQuantize(torch.nn.Module):
     """ JPEG Quantization for Y channel
 
     Args:
@@ -175,7 +175,7 @@ class YQuantize(nn.Module):
         return image
 
 
-class CQuantize(nn.Module):
+class CQuantize(torch.nn.Module):
     """ JPEG Quantization for CbCr channels
 
     Args:
@@ -205,7 +205,7 @@ class CQuantize(nn.Module):
         return image
 
 
-class CompressJpeg(nn.Module):
+class CompressJpeg(torch.nn.Module):
     """Full JPEG compression algorithm
 
     Args:
@@ -214,8 +214,8 @@ class CompressJpeg(nn.Module):
 
     def __init__(self, rounding=torch.round):
         super(CompressJpeg, self).__init__()
-        self.l1 = nn.Sequential(RGB2YCbCrJpeg(), ChromaSubsampling())
-        self.l2 = nn.Sequential(BlockSplitting(), DCT8x8())
+        self.l1 = torch.nn.Sequential(RGB2YCbCrJpeg(), ChromaSubsampling())
+        self.l2 = torch.nn.Sequential(BlockSplitting(), DCT8x8())
         self.c_quantize = CQuantize(rounding=rounding)
         self.y_quantize = YQuantize(rounding=rounding)
 
@@ -244,10 +244,9 @@ class CompressJpeg(nn.Module):
 # ------------------------ decompression ------------------------#
 
 
-class YDequantize(nn.Module):
+class YDequantize(torch.nn.Module):
     """Dequantize Y channel
     """
-
     def __init__(self):
         super(YDequantize, self).__init__()
         self.y_table = y_table
@@ -269,7 +268,7 @@ class YDequantize(nn.Module):
         return out
 
 
-class CDequantize(nn.Module):
+class CDequantize(torch.nn.Module):
     """Dequantize CbCr channel
     """
 
@@ -294,18 +293,18 @@ class CDequantize(nn.Module):
         return out
 
 
-class iDCT8x8(nn.Module):
+class iDCT8x8(torch.nn.Module):
     """Inverse discrete Cosine Transformation
     """
 
     def __init__(self):
         super(iDCT8x8, self).__init__()
         alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
-        self.alpha = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha)).float())
+        self.alpha = torch.nn.Parameter(torch.from_numpy(np.outer(alpha, alpha)).float())
         tensor = np.zeros((8, 8, 8, 8), dtype=np.float32)
         for x, y, u, v in itertools.product(range(8), repeat=4):
             tensor[x, y, u, v] = np.cos((2 * u + 1) * x * np.pi / 16) * np.cos((2 * v + 1) * y * np.pi / 16)
-        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
+        self.tensor = torch.nn.Parameter(torch.from_numpy(tensor).float())
 
     def forward(self, image):
         """
@@ -321,7 +320,7 @@ class iDCT8x8(nn.Module):
         return result
 
 
-class BlockMerging(nn.Module):
+class BlockMerging(torch.nn.Module):
     """Merge patches into image
     """
 
@@ -345,7 +344,7 @@ class BlockMerging(nn.Module):
         return image_transposed.contiguous().view(batch_size, height, width)
 
 
-class ChromaUpsampling(nn.Module):
+class ChromaUpsampling(torch.nn.Module):
     """Upsample chroma layers
     """
 
@@ -375,7 +374,7 @@ class ChromaUpsampling(nn.Module):
         return torch.cat([y.unsqueeze(3), cb.unsqueeze(3), cr.unsqueeze(3)], dim=3)
 
 
-class YCbCr2RGBJpeg(nn.Module):
+class YCbCr2RGBJpeg(torch.nn.Module):
     """Converts YCbCr image to RGB JPEG
     """
 
@@ -383,8 +382,8 @@ class YCbCr2RGBJpeg(nn.Module):
         super(YCbCr2RGBJpeg, self).__init__()
 
         matrix = np.array([[1., 0., 1.402], [1, -0.344136, -0.714136], [1, 1.772, 0]], dtype=np.float32).T
-        self.shift = nn.Parameter(torch.tensor([0, -128., -128.]))
-        self.matrix = nn.Parameter(torch.from_numpy(matrix))
+        self.shift = torch.nn.Parameter(torch.tensor([0, -128., -128.]))
+        self.matrix = torch.nn.Parameter(torch.from_numpy(matrix))
 
     def forward(self, image):
         """
@@ -398,7 +397,7 @@ class YCbCr2RGBJpeg(nn.Module):
         return result.view(image.shape).permute(0, 3, 1, 2)
 
 
-class DeCompressJpeg(nn.Module):
+class DeCompressJpeg(torch.nn.Module):
     """Full JPEG decompression algorithm
 
     Args:
@@ -446,7 +445,7 @@ class DeCompressJpeg(nn.Module):
 # ------------------------ main DiffJPEG ------------------------ #
 
 
-class DiffJPEG(nn.Module):
+class DiffJPEG(torch.nn.Module):
     """This JPEG algorithm result is slightly different from cv2.
     DiffJPEG supports batch processing.
 
@@ -483,7 +482,7 @@ class DiffJPEG(nn.Module):
             h_pad = 16 - h % 16
         if w % 16 != 0:
             w_pad = 16 - w % 16
-        x = F.pad(x, (0, w_pad, 0, h_pad), mode='constant', value=0)
+        x = torch.nn.functional.pad(x, (0, w_pad, 0, h_pad), mode='constant', value=0)
 
         y, cb, cr = self.compress(x, factor=factor)
         recovered = self.decompress(y, cb, cr, (h + h_pad), (w + w_pad), factor=factor)
@@ -492,9 +491,6 @@ class DiffJPEG(nn.Module):
 
 
 if __name__ == '__main__':
-    import cv2
-
-    from basicsr.utils import img2tensor, tensor2img
 
     img_gt = cv2.imread('test.png') / 255.
 

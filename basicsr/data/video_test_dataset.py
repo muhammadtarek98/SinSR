@@ -2,21 +2,16 @@ import glob
 import torch
 from os import path as osp
 from torch.utils import data as data
-
-from basicsr.data.data_util import duf_downsample, generate_frame_indices, read_img_seq
-from basicsr.utils import get_root_logger, scandir
-from basicsr.utils.registry import DATASET_REGISTRY
-
-
+from SinSR.basicsr.data.data_util import duf_downsample, generate_frame_indices, read_img_seq
+from SinSR.basicsr.utils.logger import get_root_logger
+from SinSR.basicsr.utils.misc import scandir
+from SinSR.basicsr.utils.registry import DATASET_REGISTRY
 @DATASET_REGISTRY.register()
 class VideoTestDataset(data.Dataset):
     """Video test dataset.
-
     Supported datasets: Vid4, REDS4, REDSofficial.
     More generally, it supports testing dataset with following structures:
-
     ::
-
         dataroot
         ├── subfolder1
             ├── frame000
@@ -203,7 +198,7 @@ class VideoTestDUFDataset(VideoTestDataset):
     """ Video test dataset for DUF dataset.
 
     Args:
-        opt (dict): Config for train dataset. Most of keys are the same as VideoTestDataset.
+        opt (dict): Config for train dataset. Most of the keys are the same as VideoTestDataset.
             It has the following extra keys:
         use_duf_downsampling (bool): Whether to use duf downsampling to generate low-resolution frames.
         scale (bool): Scale, which will be added automatically.
@@ -272,7 +267,6 @@ class VideoRecurrentTestDataset(VideoTestDataset):
             imgs_gt = self.imgs_gt[folder]
         else:
             raise NotImplementedError('Without cache_data is not implemented.')
-
         return {
             'lq': imgs_lq,
             'gt': imgs_gt,

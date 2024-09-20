@@ -2,13 +2,10 @@ import enum
 import math
 from torchvision.utils import save_image
 import numpy as np
-import torch as th
-import torch.nn.functional as F
-
-from .basic_ops import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood
-
-from ldm.models.autoencoder import AutoencoderKLTorch
+import torch
+from basic_ops import mean_flat
+from losses import normal_kl, discretized_gaussian_log_likelihood
+from SinSR.ldm.models.autoencoder import AutoencoderKLTorch
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, beta_start, beta_end):
     """
@@ -42,11 +39,6 @@ def get_named_eta_schedule(
     in the limit of num_diffusion_timesteps.
     """
     if schedule_name == 'exponential':
-        # ponential = kwargs.get('ponential', None)
-        # start = math.exp(math.log(min_noise_level / kappa) / ponential)
-        # end = math.exp(math.log(etas_end) / (2*ponential))
-        # xx = np.linspace(start, end, num_diffusion_timesteps, endpoint=True, dtype=np.float64)
-        # sqrt_etas = xx**ponential
         power = kwargs.get('power', None)
         etas_start = min(min_noise_level / kappa, min_noise_level, math.sqrt(0.001))
         increaser = math.exp(1/(num_diffusion_timesteps-1)*math.log(etas_end/etas_start))
@@ -97,7 +89,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
                             dimension equal to the length of timesteps.
     :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
     """
-    res = th.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
+    res = torch.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
     while len(res.shape) < len(broadcast_shape):
         res = res[..., None]
     return res.expand(broadcast_shape)
@@ -205,7 +197,7 @@ class GaussianDiffusion:
         :return: A noisy version of x_start.
         """
         if noise is None:
-            noise = th.randn_like(x_start)
+            noise = torch.randn_like(x_start)
         assert noise.shape == x_start.shape
         return (
             _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start) + x_start
@@ -278,9 +270,9 @@ class GaussianDiffusion:
         ddim_coef2 = _extract_into_tensor(self.ddim_coef2, t, x_t.shape) # etas_pre/etas
         etas = _extract_into_tensor(self.etas, t, x_t.shape)
         etas_prev = _extract_into_tensor(self.etas_prev, t, x_t.shape)
-        k = (1-etas_prev+th.sqrt(ddim_coef1)-th.sqrt(ddim_coef2))
-        m = th.sqrt(ddim_coef2)
-        j = (etas_prev - th.sqrt(ddim_coef1))
+        k = (1-etas_prev+torch.sqrt(ddim_coef1)-torch.sqrt(ddim_coef2))
+        m = torch.sqrt(ddim_coef2)
+        j = (etas_prev - torch.sqrt(ddim_coef1))
         
         def process_xstart(x):
             if denoised_fn is not None:
@@ -406,13 +398,13 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        noise = th.randn_like(x)
+        noise = torch.randn_like(x)
         if noise_repeat:
             noise = noise[0,].repeat(x.shape[0], 1, 1, 1)
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        sample = out["mean"] + nonzero_mask * torch.exp(0.5 * out["log_variance"]) * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"], "mean":out["mean"]}
 
     def ddim_inverse_loop(
@@ -503,7 +495,7 @@ class GaussianDiffusion:
         z_y = self.encode_first_stage(y, first_stage_model, up_sample=True) 
         z_x = self.encode_first_stage(x, first_stage_model, up_sample=False)         
     
-        t = th.tensor([0] * y.shape[0], device=device)
+        t = torch.tensor([0] * y.shape[0], device=device)
         out = self.p_mean_variance(
             model,
             z_x,
@@ -600,8 +592,8 @@ class GaussianDiffusion:
         z_sample = z_x
         
         for i in indices:
-            t = th.tensor([i] * y.shape[0], device=device)
-            with th.no_grad():
+            t = torch.tensor([i] * y.shape[0], device=device)
+            with torch.no_grad():
                 out = self.ddim_inverse(
                     model,
                     z_sample,
@@ -641,7 +633,7 @@ class GaussianDiffusion:
 
         # generating noise
         if noise is None:
-            noise = th.randn_like(z_y)
+            noise =torch.randn_like(z_y)
         if noise_repeat:
             noise = noise[0,].repeat(z_y.shape[0], 1, 1, 1)
         z_sample = self.prior_sample(z_y, noise)
@@ -650,12 +642,10 @@ class GaussianDiffusion:
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
-
             indices = tqdm(indices)
-
         for i in indices:
-            t = th.tensor([i] * y.shape[0], device=device)
-            with th.no_grad():
+            t = torch.tensor([i] * y.shape[0], device=device)
+            with torch.no_grad():
                 out = self.p_sample(
                     model,
                     z_sample,
@@ -679,7 +669,7 @@ class GaussianDiffusion:
             return z_sample
         else:
             if no_grad:
-                with th.no_grad():
+                with torch.no_grad():
                     z_sample = 1 / self.scale_factor * z_sample
                     z_sample = z_sample.type(next(first_stage_model.parameters()).dtype)
                     out = first_stage_model.decode(z_sample)
@@ -692,11 +682,11 @@ class GaussianDiffusion:
     def encode_first_stage(self, y, first_stage_model, up_sample=False):
         ori_dtype = y.dtype
         if up_sample:
-            y = F.interpolate(y, scale_factor=self.sf, mode='bicubic')
+            y = torch.nn.functional.interpolate(y, scale_factor=self.sf, mode='bicubic')
         if first_stage_model is None:
             return y
         else:
-            with th.no_grad():
+            with torch.no_grad():
                 y = y.type(dtype=next(first_stage_model.parameters()).dtype)
                 z_y = first_stage_model.encode(y)
                 out = z_y * self.scale_factor
@@ -710,10 +700,8 @@ class GaussianDiffusion:
         :param noise: the [N x C x ...] tensor of degraded inputs.
         """
         if noise is None:
-            noise = th.randn_like(y)
-
-        t = th.tensor([self.num_timesteps-1,] * y.shape[0], device=y.device).long()
-
+            noise = torch.randn_like(y)
+        t = torch.tensor([self.num_timesteps-1,] * y.shape[0], device=y.device).long()
         return y + _extract_into_tensor(self.kappa * self.sqrt_etas, t, y.shape) * noise
 
     def training_losses_distill(
@@ -743,7 +731,7 @@ class GaussianDiffusion:
             
         z_y = self.encode_first_stage(y, first_stage_model, up_sample=True) # TODO can be eliminated to speed up, since z_y is already obtained in self.ddim_sample_loop/p_sample_loop
         if noise is None:
-            noise = th.randn_like(z_y)
+            noise = torch.randn_like(z_y)
         
         terms = {}
         loss_type = "mse" # "mse"
@@ -763,31 +751,28 @@ class GaussianDiffusion:
             if self.loss_type == LossType.MSE or self.loss_type == LossType.WEIGHTED_MSE:
                 model_output = model(self._scale_input(z_t, t), t, **model_kwargs)
                 if uncertainty_hyper:
-                    with th.no_grad():
+                    with torch.no_grad():
                         # model.eval()
                         # first_stage_model.eval()
                         model_output_aux_list = []
                         for _ in range(uncertainty_num_aux):
-                            z_t_aux = self.q_sample(z_start_teacher, z_y, t, noise=th.randn_like(z_y))
+                            z_t_aux = self.q_sample(z_start_teacher, z_y, t, noise=torch.randn_like(z_y))
                             model_output_aux_list.append(model(self._scale_input(z_t_aux, t), t, **model_kwargs))
-                        model_output_aux = th.stack(model_output_aux_list, dim=0)
+                        model_output_aux = torch.stack(model_output_aux_list, dim=0)
                         uncertainty = (model_output_aux.max(dim=0)[0]-model_output_aux.min(dim=0)[0]) # B*C*H*W
                         uncertainty = uncertainty.max(dim=1, keepdim=True)[0]
-                        z_start_gt = self.encode_first_stage(x_start, first_stage_model, up_sample=False) 
-                        
+                        z_start_gt = self.encode_first_stage(x_start, first_stage_model, up_sample=False)
                         uncertainty = (uncertainty*uncertainty_hyper).clip(0,1)
                         z_start = z_start_teacher * uncertainty + z_start_gt * (1-uncertainty) 
                 else:
                     z_start = z_start_teacher
-                    
                 target = {
                     ModelMeanType.START_X: z_start,
                     ModelMeanType.RESIDUAL: z_y - z_start,
                     ModelMeanType.EPSILON: noise,
                     ModelMeanType.EPSILON_SCALE: noise*self.kappa*_extract_into_tensor(self.sqrt_etas, t, noise.shape),
                 }[self.model_mean_type]
-                assert model_output.shape == target.shape   
-
+                assert model_output.shape == target.shape
                 if loss_in_image_space:
                      assert self.model_mean_type == ModelMeanType.START_X
                      model_output_rgb = self.decode_first_stage(model_output, first_stage_model, no_grad=False)
@@ -802,12 +787,10 @@ class GaussianDiffusion:
                 else:
                     weights = 1
                 terms["loss"] += terms[loss_type] * weights
-                
                 if learn_xT:
                     predicted_xT = model(self._scale_input(z_start_teacher, t), t*0, **model_kwargs) # TODO scale_input有必要吗？
                     terms[loss_type+"_xT"] = mean_flat((z_t - predicted_xT) ** 2 if loss_type=="mse" else (z_t - predicted_xT).abs())
-                    terms["loss"] += terms[loss_type+"_xT"]   
-                     
+                    terms["loss"] += terms[loss_type+"_xT"]
             else:
                 raise NotImplementedError(self.loss_type)
             if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
@@ -819,17 +802,13 @@ class GaussianDiffusion:
             elif self.model_mean_type == ModelMeanType.EPSILON_SCALE:
                 pred_zstart = self._predict_xstart_from_eps_scale(x_t=z_t, y=z_y, t=t, eps=model_output.detach())
             else:
-                raise NotImplementedError(self.model_mean_type)     
-               
+                raise NotImplementedError(self.model_mean_type)
         if finetune_use_gt:
             z_start_gt=self.encode_first_stage(x_start, first_stage_model, up_sample=False)
-
             if not xT_cov_loss:
-                with th.no_grad():
+                with torch.no_grad():
                     predicted_xT_from_gt = model(self._scale_input(z_start_gt, t), t*0, **model_kwargs)
-                    
                     xT_std_align = False
-                    
                     if xT_std_align:
                         noise_gt_pred = predicted_xT_from_gt-z_y
                         sampled_noise = z_t-z_y
@@ -859,23 +838,17 @@ class GaussianDiffusion:
         kernel_size=8
         b, c, h, w = feat.shape
         feat = feat.view(b*c, 1, h, w)
-
-        feat_unfold = F.unfold(feat, kernel_size=kernel_size, stride=1)
-        
-        # n_patch = feat_unfold.shape[-1]
-        # ratio = 0.1
-        # feat_unfold = feat_unfold[..., th.randperm(n_patch)[...,:int(n_patch*ratio)]]
-        
+        feat_unfold = torch.nn.functional.unfold(feat, kernel_size=kernel_size, stride=1)
         feat_flatten = feat_unfold.permute(0,2,1).contiguous()
         def batch_cov(points):
             B, N, D = points.size()
             mean = points.mean(dim=1).unsqueeze(1)
             diffs = (points - mean).reshape(B * N, D)
-            prods = th.bmm(diffs.unsqueeze(2), diffs.unsqueeze(1)).reshape(B, N, D, D)
+            prods = torch.bmm(diffs.unsqueeze(2), diffs.unsqueeze(1)).reshape(B, N, D, D)
             bcov = prods.sum(dim=1) / (N - 1)  # Unbiased estimate
             return bcov  # (B, D, D)
         cov = batch_cov(feat_flatten)
-        target_cov =  th.eye(cov.shape[1]).repeat([cov.shape[0],1,1]).to(cov.device) * ((self.kappa * self.sqrt_etas)[-1])**2
+        target_cov =  torch.eye(cov.shape[1]).repeat([cov.shape[0],1,1]).to(cov.device) * ((self.kappa * self.sqrt_etas)[-1])**2
         loss_cov = mean_flat((target_cov - cov)**2).view(b, c).sum(dim=1)
         return loss_cov
 
@@ -906,7 +879,7 @@ class GaussianDiffusion:
         z_start = self.encode_first_stage(x_start, first_stage_model, up_sample=False)
 
         if noise is None:
-            noise = th.randn_like(z_start)
+            noise = torch.randn_like(z_start)
 
         z_t = self.q_sample(z_start, z_y, t, noise=noise)
 
@@ -949,7 +922,7 @@ class GaussianDiffusion:
         if self.normalize_input:
             if self.latent_flag:
                 # the variance of latent code is around 1.0
-                std = th.sqrt(_extract_into_tensor(self.etas, t, inputs.shape) * self.kappa**2 + 1)
+                std = torch.sqrt(_extract_into_tensor(self.etas, t, inputs.shape) * self.kappa**2 + 1)
                 inputs_norm = inputs / std
             else:
                 inputs_max = _extract_into_tensor(self.sqrt_etas, t, inputs.shape) * self.kappa * 3 + 1
@@ -984,24 +957,6 @@ class GaussianDiffusion:
             model_kwargs=model_kwargs,
         )
         pred_xstart = out["pred_xstart"]
-        
-        # residual = y - pred_xstart
-        # eps = self._predict_eps_from_xstart(x, y, t, pred_xstart)
-        # etas = _extract_into_tensor(self.etas, t, x.shape)
-        # etas_prev = _extract_into_tensor(self.etas_prev, t, x.shape)
-        # alpha = _extract_into_tensor(self.alpha, t, x.shape)
-        # sigma = ddim_eta * self.kappa * th.sqrt(etas_prev / etas) * th.sqrt(alpha)
-        # noise = th.randn_like(x)
-        
-        
-        # mean_pred = (
-        #     pred_xstart + etas_prev * residual
-        #     + th.sqrt(etas_prev*self.kappa**2 - sigma**2) * eps
-        # )
-        # nonzero_mask = (
-        #     (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-        # )  # no noise when t == 0
-        # sample = mean_pred + nonzero_mask * sigma * noise
 
         sample = \
             pred_xstart*out["ddim_k"] \
@@ -1091,8 +1046,8 @@ class GaussianDiffusion:
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * z_y.shape[0], device=device)
-            with th.no_grad():
+            t = torch.tensor([i] * z_y.shape[0], device=device)
+            with torch.no_grad():
                 out = self.ddim_sample(
                     model=model,
                     x=z_sample,
@@ -1210,7 +1165,7 @@ class GaussianDiffusionDDPM:
         :return: A noisy version of x_start.
         """
         if noise is None:
-            noise = th.randn_like(x_start)
+            noise = torch.randn_like(x_start)
         assert noise.shape == x_start.shape
         return (
             _extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
@@ -1274,10 +1229,10 @@ class GaussianDiffusionDDPM:
 
         if self.model_var_type in [ModelVarTypeDDPM.LEARNED, ModelVarTypeDDPM.LEARNED_RANGE]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
-            model_output, model_var_values = th.split(model_output, C, dim=1)
+            model_output, model_var_values = torch.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarTypeDDPM.LEARNED:
                 model_log_variance = model_var_values
-                model_variance = th.exp(model_log_variance)
+                model_variance = torch.exp(model_log_variance)
             else:
                 min_log = _extract_into_tensor(
                     self.posterior_log_variance_clipped, t, x.shape
@@ -1286,7 +1241,7 @@ class GaussianDiffusionDDPM:
                 # The model_var_values is [-1, 1] for [min_var, max_var].
                 frac = (model_var_values + 1) / 2
                 model_log_variance = frac * max_log + (1 - frac) * min_log
-                model_variance = th.exp(model_log_variance)
+                model_variance = torch.exp(model_log_variance)
         else:
             model_variance, model_log_variance = {
                 # for fixedlarge, we set the initial (log-)variance like so
@@ -1387,11 +1342,11 @@ class GaussianDiffusionDDPM:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        noise = th.randn_like(x)
+        noise = torch.randn_like(x)
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        sample = out["mean"] + nonzero_mask * torch.exp(0.5 * out["log_variance"]) * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(
@@ -1463,7 +1418,7 @@ class GaussianDiffusionDDPM:
         if noise is not None:
             img = noise
         else:
-            img = th.randn(*shape, device=device)
+            img = torch.randn(*shape, device=device)
         indices = list(range(self.num_timesteps))[::-1]
 
         if progress:
@@ -1473,8 +1428,8 @@ class GaussianDiffusionDDPM:
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * shape[0], device=device)
-            with th.no_grad():
+            t = torch.tensor([i] * shape[0], device=device)
+            with torch.no_grad():
                 out = self.p_sample(
                     model,
                     img,
@@ -1516,14 +1471,14 @@ class GaussianDiffusionDDPM:
         alpha_bar_prev = _extract_into_tensor(self.alphas_cumprod_prev, t, x.shape)
         sigma = (
             eta
-            * th.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
-            * th.sqrt(1 - alpha_bar / alpha_bar_prev)
+            * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
+            * torch.sqrt(1 - alpha_bar / alpha_bar_prev)
         )
         # Equation 12.
-        noise = th.randn_like(x)
+        noise = torch.randn_like(x)
         mean_pred = (
-            out["pred_xstart"] * th.sqrt(alpha_bar_prev)
-            + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
+            out["pred_xstart"] *torch.sqrt(alpha_bar_prev)
+            + torch.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
         )
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
@@ -1560,15 +1515,12 @@ class GaussianDiffusionDDPM:
             - out["pred_xstart"]
         ) / _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x.shape)
         alpha_bar_next = _extract_into_tensor(self.alphas_cumprod_next, t, x.shape)
-
         # Equation 12. reversed
         mean_pred = (
-            out["pred_xstart"] * th.sqrt(alpha_bar_next)
-            + th.sqrt(1 - alpha_bar_next) * eps
+            out["pred_xstart"] * torch.sqrt(alpha_bar_next)
+            + torch.sqrt(1 - alpha_bar_next) * eps
         )
-
         return {"sample": mean_pred, "pred_xstart": out["pred_xstart"]}
-
     def ddim_sample_loop(
         self,
         model,
@@ -1626,18 +1578,16 @@ class GaussianDiffusionDDPM:
         if noise is not None:
             img = noise
         else:
-            img = th.randn(*shape, device=device)
+            img = torch.randn(*shape, device=device)
         indices = list(range(self.num_timesteps))[::-1]
-
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
-
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * shape[0], device=device).long()
-            with th.no_grad():
+            t = torch.tensor([i] * shape[0], device=device).long()
+            with torch.no_grad():
                 out = self.ddim_sample(
                     model,
                     img,
@@ -1668,13 +1618,10 @@ class GaussianDiffusionDDPM:
 
         z_start = self.encode_first_stage(x_start, first_stage_model)
         if noise is None:
-            noise = th.randn_like(z_start)
+            noise = torch.randn_like(z_start)
         z_t = self.q_sample(z_start, t, noise=noise)
-
         terms = {}
-
         model_output = model(z_t, t, **model_kwargs)
-
         target = {
             ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
                 x_start=z_start, x_t=z_t, t=t
@@ -1685,7 +1632,6 @@ class GaussianDiffusionDDPM:
         assert model_output.shape == target.shape == z_start.shape
         terms["mse"] = mean_flat((target - model_output) ** 2)
         terms["loss"] = terms["mse"]
-
         if self.model_mean_type == ModelMeanType.START_X:      # predict x_0
             pred_zstart = model_output.detach()
         elif self.model_mean_type == ModelMeanType.EPSILON:
@@ -1706,7 +1652,7 @@ class GaussianDiffusionDDPM:
         :return: a batch of [N] KL values (in bits), one per batch element.
         """
         batch_size = x_start.shape[0]
-        t = th.tensor([self.num_timesteps - 1] * batch_size, device=x_start.device)
+        t = torch.tensor([self.num_timesteps - 1] * batch_size, device=x_start.device)
         qt_mean, _, qt_log_variance = self.q_mean_variance(x_start, t)   # q(x_t|x_0)
         kl_prior = normal_kl(
             mean1=qt_mean, logvar1=qt_log_variance, mean2=0.0, logvar2=0.0
@@ -1722,7 +1668,7 @@ class GaussianDiffusionDDPM:
         if first_stage_model is None:
             return z_sample
         else:
-            with th.no_grad():
+            with torch.no_grad():
                 z_sample = 1 / self.scale_factor * z_sample
                 z_sample = z_sample.type(next(first_stage_model.parameters()).dtype)
                 out = first_stage_model.decode(z_sample)
@@ -1731,11 +1677,11 @@ class GaussianDiffusionDDPM:
     def encode_first_stage(self, y, first_stage_model, up_sample=False):
         ori_dtype = y.dtype
         if up_sample:
-            y = F.interpolate(y, scale_factor=self.sf, mode='bicubic')
+            y = torch.nn.functional.interpolate(y, scale_factor=self.sf, mode='bicubic')
         if first_stage_model is None:
             return y
         else:
-            with th.no_grad():
+            with torch.no_grad():
                 y = y.type(dtype=next(first_stage_model.parameters()).dtype)
                 z_y = first_stage_model.encode(y)
                 out = z_y * self.scale_factor

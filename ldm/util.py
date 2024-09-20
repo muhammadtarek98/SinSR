@@ -1,13 +1,8 @@
 import importlib
-
 import torch
-from torch import optim
 import numpy as np
-
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
-
-
 def log_txt_as_img(wh, xc, size=10):
     # wh a tuple of (width, height)
     # xc a list of captions to plot
@@ -87,7 +82,7 @@ def get_obj_from_str(string, reload=False):
     return getattr(importlib.import_module(module, package=None), cls)
 
 
-class AdamWwithEMAandWings(optim.Optimizer):
+class AdamWwithEMAandWings(torch.optim.Optimizer):
     # credit to https://gist.github.com/crowsonkb/65f7265353f403714fce3b2595e0b298
     def __init__(self, params, lr=1.e-3, betas=(0.9, 0.999), eps=1.e-8,  # TODO: check hyperparameters before using
                  weight_decay=1.e-2, amsgrad=False, ema_decay=0.9999,   # ema decay to match previous code
@@ -176,7 +171,7 @@ class AdamWwithEMAandWings(optim.Optimizer):
                 # record the step after step update
                 state_steps.append(state['step'])
 
-            optim._functional.adamw(params_with_grad,
+            torch.optim._functional.adamw(params_with_grad,
                     grads,
                     exp_avgs,
                     exp_avg_sqs,

@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from ldm.modules.diffusionmodules.model import Encoder, Decoder
+from modules.diffusionmodules.model import Encoder, Decoder
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 from ldm.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 

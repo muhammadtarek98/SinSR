@@ -3,11 +3,11 @@ import time
 from os import path as osp
 from torch.utils import data as data
 from torchvision.transforms.functional import normalize
-
-from basicsr.data.transforms import augment
-from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
-from basicsr.utils.registry import DATASET_REGISTRY
-
+from SinSR.basicsr.data.transforms import augment
+from SinSR.basicsr.utils.file_client import FileClient
+from SinSR.basicsr.utils.logger import get_root_logger
+from SinSR.basicsr.utils.img_util import imfrombytes, img2tensor
+from SinSR.basicsr.utils.registry import DATASET_REGISTRY
 
 @DATASET_REGISTRY.register()
 class FFHQDataset(data.Dataset):

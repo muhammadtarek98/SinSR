@@ -12,11 +12,13 @@ import numpy as np
 import os.path as osp
 import torch
 import torch.utils.data as data
-from basicsr.data import degradations as degradations
-from basicsr.data.data_util import paths_from_folder
-from basicsr.data.transforms import augment
-from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
-from basicsr.utils.registry import DATASET_REGISTRY
+from SinSR.basicsr.data import degradations as degradations
+from SinSR.basicsr.data.data_util import paths_from_folder
+from SinSR.basicsr.data.transforms import augment
+from SinSR.basicsr.utils.file_client import FileClient
+from SinSR.basicsr.utils.logger import get_root_logger
+from SinSR.basicsr.utils.img_util import imfrombytes, img2tensor
+from SinSR.basicsr.utils.registry import DATASET_REGISTRY
 from torchvision.transforms.functional import (
         adjust_brightness,
         adjust_contrast,

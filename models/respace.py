@@ -1,7 +1,7 @@
 import numpy as np
-import torch as th
+import torch
 
-from .gaussian_diffusion import GaussianDiffusion, GaussianDiffusionDDPM
+from gaussian_diffusion import GaussianDiffusion, GaussianDiffusionDDPM
 
 def space_timesteps(num_timesteps, sample_timesteps):
     """
@@ -58,7 +58,7 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
-        map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
+        map_tensor = torch.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
         new_ts = map_tensor[ts]
         return self.model(x, new_ts, **kwargs)
 

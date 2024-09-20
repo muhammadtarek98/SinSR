@@ -5,24 +5,21 @@
 # https://github.com/JingyunLiang/SwinIR
 # -----------------------------------------------------------------------------------
 
-import math
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from timm.models.layers import to_2tuple, trunc_normal_
 
-from .basic_ops import normalization
+from basic_ops import normalization
 
-class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
-        super().__init__()
+class Mlp(torch.nn.Module):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=torch.nn.GELU, drop=0.0):
+        super(Mlp,self).__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Conv2d(in_features, hidden_features, kernel_size=1, stride=1)
+        self.fc1 = torch.nn.Conv2d(in_features, hidden_features, kernel_size=1, stride=1)
         self.act = act_layer()
-        self.fc2 = nn.Conv2d(hidden_features, out_features, kernel_size=1, stride=1)
-        self.drop = nn.Dropout(drop)
+        self.fc2 = torch.nn.Conv2d(hidden_features, out_features, kernel_size=1, stride=1)
+        self.drop = torch.nn.Dropout(drop)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -62,7 +59,7 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 5, 1, 3, 2, 4).contiguous().view(B, -1, H, W)
     return x
 
-class WindowAttention(nn.Module):
+class WindowAttention(torch.nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
 
@@ -75,20 +72,16 @@ class WindowAttention(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
-
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
-
-        super().__init__()
+        super(WindowAttention,self).__init__()
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
-
         # define a parameter table of relative position bias
-        self.relative_position_bias_table = nn.Parameter(
+        self.relative_position_bias_table = torch.nn.Parameter(
             torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size[0])
         coords_w = torch.arange(self.window_size[1])
@@ -101,15 +94,12 @@ class WindowAttention(nn.Module):
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-
-        self.proj_drop = nn.Dropout(proj_drop)
-
+        self.qkv = torch.nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop =torch. nn.Dropout(attn_drop)
+        self.proj = torch.nn.Linear(dim, dim)
+        self.proj_drop = torch.nn.Dropout(proj_drop)
         trunc_normal_(self.relative_position_bias_table, std=.02)
-        self.softmax = nn.Softmax(dim=-1)
+        self.softmax = torch.nn.Softmax(dim=-1)
 
     def forward(self, x, mask=None):
         """
@@ -120,15 +110,12 @@ class WindowAttention(nn.Module):
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple), B_ x H x N x C
-
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1).contiguous())
-
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         attn = attn + relative_position_bias.unsqueeze(0).to(attn.dtype)
-
         if mask is not None:
             nW = mask.shape[0]
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
@@ -146,7 +133,6 @@ class WindowAttention(nn.Module):
 
     def extra_repr(self) -> str:
         return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
-
     def flops(self, N):
         # calculate flops for 1 window with token length of N
         flops = 0
@@ -160,7 +146,7 @@ class WindowAttention(nn.Module):
         flops += N * self.dim * self.dim
         return flops
 
-class SwinTransformerBlock(nn.Module):
+class SwinTransformerBlock(torch.nn.Module):
     r""" Swin Transformer Block.
 
     Args:
@@ -180,8 +166,8 @@ class SwinTransformerBlock(nn.Module):
     """
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=normalization):
-        super().__init__()
+                 act_layer=torch.nn.GELU, norm_layer=normalization):
+        super(SwinTransformerBlock,self).__init__()
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -193,13 +179,12 @@ class SwinTransformerBlock(nn.Module):
             self.shift_size = 0
             self.window_size = min(self.input_resolution)
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
-
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = torch.nn.Dropout(drop_path) if drop_path > 0. else torch.nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
@@ -298,7 +283,7 @@ class SwinTransformerBlock(nn.Module):
         flops += self.dim * H * W
         return flops
 
-class PatchMerging(nn.Module):
+class PatchMerging(torch.nn.Module):
     r""" Patch Merging Layer.
 
     Args:
@@ -306,11 +291,11 @@ class PatchMerging(nn.Module):
         dim (int): Number of input channels.
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, dim, norm_layer=torch.nn.LayerNorm):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.reduction = torch.nn.Linear(4 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
@@ -345,7 +330,7 @@ class PatchMerging(nn.Module):
         flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
         return flops
 
-class BasicLayer(nn.Module):
+class BasicLayer(torch.nn.Module):
     """ A basic Swin Transformer layer for one stage.
     Args:
         dim (int): Number of input channels.
@@ -407,7 +392,7 @@ class BasicLayer(nn.Module):
                 )
 
         # build blocks
-        self.blocks = nn.ModuleList([
+        self.blocks = torch.nn.ModuleList([
             SwinTransformerBlock(
                         dim=embed_dim,
                         input_resolution=input_resolution,
@@ -449,7 +434,7 @@ class BasicLayer(nn.Module):
             flops += self.downsample.flops()
         return flops
 
-class PatchEmbed(nn.Module):
+class PatchEmbed(torch.nn.Module):
     r""" Image to Patch Embedding
 
     Args:
@@ -467,7 +452,7 @@ class PatchEmbed(nn.Module):
             embed_dim=96,
             patch_norm=False,
             ):
-        super().__init__()
+        super(PatchEmbed,self).__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -477,11 +462,11 @@ class PatchEmbed(nn.Module):
         self.num_patches = patches_resolution[0] * patches_resolution[1]
         self.embed_dim = embed_dim
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = torch.nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         if patch_norm:
             self.norm = normalization(embed_dim)
         else:
-            self.norm = nn.Identity()
+            self.norm = torch.nn.Identity()
 
     def forward(self, x):
         """
@@ -501,7 +486,7 @@ class PatchEmbed(nn.Module):
             flops += H * W * self.embed_dim
         return flops
 
-class PatchUnEmbed(nn.Module):
+class PatchUnEmbed(torch.nn.Module):
     r""" Patch to Image.
 
     Args:
@@ -509,14 +494,13 @@ class PatchUnEmbed(nn.Module):
     """
 
     def __init__(self, out_chans, embed_dim=96, patch_norm=False):
-        super().__init__()
+        super(PatchUnEmbed,self).__init__()
         self.embed_dim = embed_dim
-
-        self.proj = nn.Conv2d(embed_dim, out_chans, kernel_size=1, stride=1)
+        self.proj = torch.nn.Conv2d(embed_dim, out_chans, kernel_size=1, stride=1)
         if patch_norm:
             self.norm = normalization(out_chans)
         else:
-            self.norm = nn.Identity()
+            self.norm = torch.nn.Identity()
 
     def forward(self, x):
         '''

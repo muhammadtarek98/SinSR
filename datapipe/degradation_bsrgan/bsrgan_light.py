@@ -2,7 +2,6 @@
 import numpy as np
 import cv2
 import torch
-
 from functools import partial
 import random
 from scipy import ndimage

@@ -13,7 +13,6 @@
 import numpy as np
 import cv2
 import torch
-
 from functools import partial
 import random
 from scipy import ndimage
@@ -22,8 +21,7 @@ import scipy.stats as ss
 from scipy.interpolate import interp2d
 from scipy.linalg import orth
 import albumentations
-
-import ldm.modules.image_degradation.utils_image as util
+from SinSR.datapipe.degradation_bsrgan import utils_image as util
 
 
 def modcrop_np(img, sf):

@@ -3,7 +3,6 @@
 # Power by Zongsheng Yue 2021-12-07 21:37:58
 
 import cv2
-import numpy as np
 
 def modcrop(im, sf):
     h, w = im.shape[:2]

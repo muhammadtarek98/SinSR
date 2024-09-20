@@ -1,23 +1,12 @@
 from abc import abstractmethod
 import math
-
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-
-from ldm.modules.diffusionmodules.util import (
-    checkpoint,
-    conv_nd,
-    linear,
-    avg_pool_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-)
-from ldm.modules.attention import SpatialTransformer
-from ldm.util import exists
-
+from util import (checkpoint,conv_nd,linear,avg_pool_nd,zero_module,normalization,timestep_embedding)
+from SinSR.ldm.modules.attention import SpatialTransformer
+from SinSR.ldm.util import exists
 
 # dummy replace
 def convert_module_to_f16(x):

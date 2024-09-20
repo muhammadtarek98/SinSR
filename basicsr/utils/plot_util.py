@@ -1,6 +1,4 @@
 import re
-
-
 def read_data_from_tensorboard(log_path, tag):
     """Get raw data (steps and values) from tensorboard events.
 

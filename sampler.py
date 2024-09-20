@@ -5,13 +5,11 @@ import numpy as np
 from pathlib import Path
 from loguru import logger
 from omegaconf import OmegaConf
-
 from utils import util_net
 from utils import util_image
 from utils import util_common
 
 import torch
-import torch.nn.functional as F
 import torch.distributed as dist
 import torch.multiprocessing as mp
 

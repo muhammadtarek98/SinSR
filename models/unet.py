@@ -1,22 +1,10 @@
 from abc import abstractmethod
-
 import math
-
 import numpy as np
-import torch as th
-import torch.nn as nn
-import torch.nn.functional as F
-
-from .fp16_util import convert_module_to_f16, convert_module_to_f32
-from .basic_ops import (
-    linear,
-    conv_nd,
-    avg_pool_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-)
-from .swin_transformer import BasicLayer
+import torch
+from fp16_util import convert_module_to_f16, convert_module_to_f32
+from basic_ops import linear,conv_nd,avg_pool_nd,zero_module,normalization,timestep_embedding
+from swin_transformer import BasicLayer
 
 try:
     import xformers
@@ -25,18 +13,17 @@ try:
 except:
     XFORMERS_IS_AVAILBLE = False
 
-class TimestepBlock(nn.Module):
+class TimestepBlock(torch.nn.Module):
     """
     Any module where forward() takes timestep embeddings as a second argument.
     """
-
     @abstractmethod
     def forward(self, x, emb):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
 
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+class TimestepEmbedSequential(torch.nn.Sequential, TimestepBlock):
     """
     A sequential module that passes timestep embeddings to the children that
     support it as an extra input.
@@ -50,7 +37,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
                 x = layer(x)
         return x
 
-class Upsample(nn.Module):
+class Upsample(torch.nn.Module):
     """
     An upsampling layer with an optional convolution.
     :param channels: channels in the inputs and outputs.
@@ -60,7 +47,7 @@ class Upsample(nn.Module):
     """
 
     def __init__(self, channels, use_conv, dims=2, out_channels=None):
-        super().__init__()
+        super(Upsample,self).__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
@@ -71,16 +58,16 @@ class Upsample(nn.Module):
     def forward(self, x):
         assert x.shape[1] == self.channels
         if self.dims == 3:
-            x = F.interpolate(
+            x = torch.nn.functional.interpolate(
                 x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest"
             )
         else:
-            x = F.interpolate(x, scale_factor=2, mode="nearest")
+            x = torch.nn.functional.interpolate(x, scale_factor=2, mode="nearest")
         if self.use_conv:
             x = self.conv(x)
         return x
 
-class Downsample(nn.Module):
+class Downsample(torch.nn.Module):
     """
     A downsampling layer with an optional convolution.
     :param channels: channels in the inputs and outputs.
@@ -89,7 +76,7 @@ class Downsample(nn.Module):
                  downsampling occurs in the inner-two dimensions.
     """
     def __init__(self, channels, use_conv, dims=2, out_channels=None):
-        super().__init__()
+        super(Downsample,self).__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
@@ -133,7 +120,7 @@ class ResBlock(TimestepBlock):
         up=False,
         down=False,
     ):
-        super().__init__()
+        super(ResBlock,self).__init__()
         self.channels = channels
         self.emb_channels = emb_channels
         self.dropout = dropout
@@ -141,14 +128,12 @@ class ResBlock(TimestepBlock):
         self.use_conv = use_conv
         self.use_scale_shift_norm = use_scale_shift_norm
 
-        self.in_layers = nn.Sequential(
+        self.in_layers = torch.nn.Sequential(
             normalization(channels),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             conv_nd(dims, channels, self.out_channels, 3, padding=1),
         )
-
         self.updown = up or down
-
         if up:
             self.h_upd = Upsample(channels, False, dims)
             self.x_upd = Upsample(channels, False, dims)
@@ -156,26 +141,26 @@ class ResBlock(TimestepBlock):
             self.h_upd = Downsample(channels, False, dims)
             self.x_upd = Downsample(channels, False, dims)
         else:
-            self.h_upd = self.x_upd = nn.Identity()
+            self.h_upd = self.x_upd = torch.nn.Identity()
 
-        self.emb_layers = nn.Sequential(
-            nn.SiLU(),
+        self.emb_layers = torch.nn.Sequential(
+            torch.nn.SiLU(),
             linear(
                 emb_channels,
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
-        self.out_layers = nn.Sequential(
+        self.out_layers = torch.nn.Sequential(
             normalization(self.out_channels),
-            nn.SiLU(),
-            nn.Dropout(p=dropout),
+            torch.nn.SiLU(),
+            torch.nn.Dropout(p=dropout),
             zero_module(
                 conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
             ),
         )
 
         if self.out_channels == channels:
-            self.skip_connection = nn.Identity()
+            self.skip_connection = torch.nn.Identity()
         elif use_conv:
             self.skip_connection = conv_nd(
                 dims, channels, self.out_channels, 3, padding=1
@@ -197,7 +182,7 @@ class ResBlock(TimestepBlock):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            scale, shift = torch.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
@@ -219,9 +204,9 @@ def count_flops_attn(model, _x, y):
     b, c, *spatial = y[0].shape
     num_spatial = int(np.prod(spatial))
     matmul_ops = 2 * b * (num_spatial ** 2) * c
-    model.total_ops += th.DoubleTensor([matmul_ops])
+    model.total_ops += torch.DoubleTensor([matmul_ops])
 
-class AttentionBlock(nn.Module):
+class AttentionBlock(torch.nn.Module):
     """
     An attention block that allows spatial positions to attend to each other.
     Originally ported from here, but adapted to the N-d case.
@@ -234,7 +219,7 @@ class AttentionBlock(nn.Module):
         num_head_channels=-1,
         use_new_attention_order=False,
     ):
-        super().__init__()
+        super(AttentionBlock,self).__init__()
         self.channels = channels
         if num_head_channels == -1:
             self.num_heads = num_heads
@@ -262,13 +247,13 @@ class AttentionBlock(nn.Module):
         h = self.proj_out(h)
         return (x + h).reshape(b, c, *spatial)
 
-class QKVAttentionLegacy(nn.Module):
+class QKVAttentionLegacy(torch.nn.Module):
     """
     A module which performs QKV attention. Matches legacy QKVAttention + input/ouput heads shaping
     """
 
     def __init__(self, n_heads):
-        super().__init__()
+        super(QKVAttentionLegacy,self).__init__()
         self.n_heads = n_heads
 
     def forward(self, qkv):
@@ -290,11 +275,11 @@ class QKVAttentionLegacy(nn.Module):
             # q,k, v: (b*heads) x ch x length
             q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
             scale = 1 / math.sqrt(math.sqrt(ch))
-            weight = th.einsum(
+            weight = torch.einsum(
                 "bct,bcs->bts", q * scale, k * scale
             )  # More stable with f16 than dividing afterwards     # (b*heads) x M x M
-            weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
-            a = th.einsum("bts,bcs->bct", weight, v)  # (b*heads) x ch x length
+            weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+            a = torch.einsum("bts,bcs->bct", weight, v)  # (b*heads) x ch x length
             out = a.reshape(bs, -1, length)
         return out
 
@@ -302,13 +287,13 @@ class QKVAttentionLegacy(nn.Module):
     def count_flops(model, _x, y):
         return count_flops_attn(model, _x, y)
 
-class QKVAttention(nn.Module):
+class QKVAttention(torch.nn.Module):
     """
     A module which performs QKV attention and splits in a different order.
     """
 
     def __init__(self, n_heads):
-        super().__init__()
+        super(QKVAttention,self).__init__()
         self.n_heads = n_heads
 
     def forward(self, qkv):
@@ -329,13 +314,13 @@ class QKVAttention(nn.Module):
         else:
             q, k, v = qkv.chunk(3, dim=1)  # b x heads*ch x length
             scale = 1 / math.sqrt(math.sqrt(ch))
-            weight = th.einsum(
+            weight = torch.einsum(
                 "bct,bcs->bts",
                 (q * scale).view(bs * self.n_heads, ch, length),
                 (k * scale).view(bs * self.n_heads, ch, length),
             )  # More stable with f16 than dividing afterwards
-            weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
-            a = th.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
+            weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+            a = torch.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
             out = a.reshape(bs, -1, length)
         return out
 
@@ -343,7 +328,7 @@ class QKVAttention(nn.Module):
     def count_flops(model, _x, y):
         return count_flops_attn(model, _x, y)
 
-class UNetModel(nn.Module):
+class UNetModel(torch.nn.Module):
     """
     The full UNet model with attention and timestep embedding.
     :param in_channels: channels in the input Tensor.
@@ -391,14 +376,12 @@ class UNetModel(nn.Module):
         resblock_updown=False,
         use_new_attention_order=False,
     ):
-        super().__init__()
-
+        super(UNetModel,self).__init__()
         if isinstance(num_res_blocks, int):
             num_res_blocks = [num_res_blocks,] * len(channel_mult)
         else:
             assert len(num_res_blocks) == len(channel_mult)
         self.num_res_blocks = num_res_blocks
-
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -408,23 +391,23 @@ class UNetModel(nn.Module):
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.num_classes = num_classes
-        self.dtype = th.float16 if use_fp16 else th.float32
+        self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.cond_lq = cond_lq
 
         time_embed_dim = model_channels * 4
-        self.time_embed = nn.Sequential(
+        self.time_embed = torch.nn.Sequential(
             linear(model_channels, time_embed_dim),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
 
         if self.num_classes is not None:
-            self.label_emb = nn.Embedding(num_classes, time_embed_dim)
+            self.label_emb = torch.nn.Embedding(num_classes, time_embed_dim)
 
         ch = input_ch = int(channel_mult[0] * model_channels)
-        self.input_blocks = nn.ModuleList(
+        self.input_blocks = torch.nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))]
         )
         input_block_chans = [ch]
@@ -499,7 +482,7 @@ class UNetModel(nn.Module):
             ),
         )
 
-        self.output_blocks = nn.ModuleList([])
+        self.output_blocks = torch.nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks[level] + 1):
                 ich = input_block_chans.pop()
@@ -540,9 +523,9 @@ class UNetModel(nn.Module):
                     ds *= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
 
-        self.out = nn.Sequential(
+        self.out = torch.nn.Sequential(
             normalization(ch),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             conv_nd(dims, input_ch, out_channels, 3, padding=1),
         )
 
@@ -569,8 +552,8 @@ class UNetModel(nn.Module):
         if lq is not None:
             assert self.cond_lq
             if lq.shape[2:] != x.shape[2:]:
-                lq = F.pixel_unshuffle(lq, 2)
-            x = th.cat([x, lq], dim=1)
+                lq = torch.nn.functional.pixel_unshuffle(lq, 2)
+            x = torch.cat([x, lq], dim=1)
 
         h = x.type(self.dtype)
         for ii, module in enumerate(self.input_blocks):
@@ -578,21 +561,21 @@ class UNetModel(nn.Module):
             hs.append(h)
         h = self.middle_block(h, emb)
         for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+            h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
         h = h.type(x.dtype)
         out = self.out(h)
         return out
 
-class UNetModelSwin(nn.Module):
+class UNetModelSwin(torch.nn.Module):
     """
     The full UNet model with attention and timestep embedding.
     :param in_channels: channels in the input Tensor.
     :param model_channels: base channel count for the model.
     :param out_channels: channels in the output Tensor.
-    :param num_res_blocks: number of residual blocks per downsample.
+    :param num_res_blocks: number of residual blocks per down sample.
     :param attention_resolutions: a collection of downsample rates at which
-        attention will take place. May be a set, list, or tuple.
+        attention will take place. It may be a set, list, or tuple.
         For example, if this contains 4, then at 4x downsampling, attention
         will be used.
     :param dropout: the dropout probability.
@@ -637,7 +620,7 @@ class UNetModelSwin(nn.Module):
         mlp_ratio=2.0,
         patch_norm=False,
     ):
-        super().__init__()
+        super(UNetModelSwin,self).__init__()
 
         if isinstance(num_res_blocks, int):
             num_res_blocks = [num_res_blocks,] * len(channel_mult)
@@ -646,7 +629,6 @@ class UNetModelSwin(nn.Module):
         if num_heads == -1:
             assert swin_embed_dim % num_head_channels == 0 and num_head_channels > 0
         self.num_res_blocks = num_res_blocks
-
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -655,20 +637,20 @@ class UNetModelSwin(nn.Module):
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
-        self.dtype = th.float16 if use_fp16 else th.float32
+        self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.cond_lq = cond_lq
 
         time_embed_dim = model_channels * 4
-        self.time_embed = nn.Sequential(
+        self.time_embed = torch.nn.Sequential(
             linear(model_channels, time_embed_dim),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
 
         ch = input_ch = int(channel_mult[0] * model_channels)
-        self.input_blocks = nn.ModuleList(
+        self.input_blocks = torch.nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))]
         )
         input_block_chans = [ch]
@@ -767,7 +749,7 @@ class UNetModelSwin(nn.Module):
             ),
         )
 
-        self.output_blocks = nn.ModuleList([])
+        self.output_blocks = torch.nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks[level] + 1):
                 ich = input_block_chans.pop()
@@ -820,9 +802,9 @@ class UNetModelSwin(nn.Module):
                     ds *= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
 
-        self.out = nn.Sequential(
+        self.out = torch.nn.Sequential(
             normalization(ch),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             conv_nd(dims, input_ch, out_channels, 3, padding=1),
         )
 
@@ -843,10 +825,10 @@ class UNetModelSwin(nn.Module):
             # print(lq.shape, x.shape)
             if lq.shape[2:] != x.shape[2:]:
                 if lq.shape[2]> x.shape[2]:
-                    lq = F.pixel_unshuffle(lq, 2)
+                    lq = torch.nn.functional.pixel_unshuffle(lq, 2)
                 else:
-                    lq = F.interpolate(lq, scale_factor=4)
-            x = th.cat([x, lq], dim=1)
+                    lq = torch.nn.functional.interpolate(lq, scale_factor=4)
+            x = torch.cat([x, lq], dim=1)
 
         h = x.type(self.dtype)
         for ii, module in enumerate(self.input_blocks):
@@ -854,7 +836,7 @@ class UNetModelSwin(nn.Module):
             hs.append(h)
         h = self.middle_block(h, emb)
         for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+            h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
         h = h.type(x.dtype)
         out = self.out(h)
@@ -900,20 +882,18 @@ class ResBlockConv(TimestepBlock):
         up=False,
         down=False,
     ):
-        super().__init__()
+        super(ResBlockConv,self).__init__()
         self.channels = channels
         self.emb_channels = emb_channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
         self.use_scale_shift_norm = use_scale_shift_norm
 
-        self.in_layers = nn.Sequential(
-            nn.SiLU(),
+        self.in_layers = torch.nn.Sequential(
+            torch.nn.SiLU(),
             conv_nd(dims, channels, self.out_channels, 3, padding=1),
         )
-
         self.updown = up or down
-
         if up:
             self.h_upd = Upsample(channels, False, dims)
             self.x_upd = Upsample(channels, False, dims)
@@ -921,24 +901,24 @@ class ResBlockConv(TimestepBlock):
             self.h_upd = Downsample(channels, False, dims)
             self.x_upd = Downsample(channels, False, dims)
         else:
-            self.h_upd = self.x_upd = nn.Identity()
+            self.h_upd = self.x_upd = torch.nn.Identity()
 
-        self.emb_layers = nn.Sequential(
-            nn.SiLU(),
+        self.emb_layers = torch.nn.Sequential(
+            torch.nn.SiLU(),
             linear(
                 emb_channels,
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
-        self.out_layers = nn.Sequential(
-            nn.SiLU(),
+        self.out_layers = torch.nn.Sequential(
+            torch.nn.SiLU(),
             zero_module(
                 conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
             ),
         )
 
         if self.out_channels == channels:
-            self.skip_connection = nn.Identity()
+            self.skip_connection = torch.nn.Identity()
         elif use_conv:
             self.skip_connection = conv_nd(
                 dims, channels, self.out_channels, 3, padding=1
@@ -960,7 +940,7 @@ class ResBlockConv(TimestepBlock):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            scale, shift = torch.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
@@ -968,7 +948,7 @@ class ResBlockConv(TimestepBlock):
             h = self.out_layers(h)
         return self.skip_connection(x) + h
 
-class UNetModelConv(nn.Module):
+class UNetModelConv(torch.nn.Module):
     """
     The full UNet model with attention and timestep embedding.
     :param in_channels: channels in the input Tensor.
@@ -1002,31 +982,29 @@ class UNetModelConv(nn.Module):
         resblock_updown=False,
         use_fp16=False,
     ):
-        super().__init__()
+        super(UNetModelConv,self).__init__()
 
         if isinstance(num_res_blocks, int):
             num_res_blocks = [num_res_blocks,] * len(channel_mult)
         else:
             assert len(num_res_blocks) == len(channel_mult)
         self.num_res_blocks = num_res_blocks
-        self.dtype = th.float16 if use_fp16 else th.float32
-
+        self.dtype = torch.float16 if use_fp16 else torch.float32
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.cond_lq = cond_lq
-
         time_embed_dim = model_channels * 4
-        self.time_embed = nn.Sequential(
+        self.time_embed = torch.nn.Sequential(
             linear(model_channels, time_embed_dim),
-            nn.SiLU(),
+            torch.nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
 
         ch = input_ch = int(channel_mult[0] * model_channels)
-        self.input_blocks = nn.ModuleList(
+        self.input_blocks = torch.nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))]
         )
         input_block_chans = [ch]
@@ -1080,7 +1058,7 @@ class UNetModelConv(nn.Module):
             ),
         )
 
-        self.output_blocks = nn.ModuleList([])
+        self.output_blocks = torch.nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks[level] + 1):
                 ich = input_block_chans.pop()
@@ -1110,8 +1088,8 @@ class UNetModelConv(nn.Module):
                     )
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
 
-        self.out = nn.Sequential(
-            nn.SiLU(),
+        self.out = torch.nn.Sequential(
+            torch.nn.SiLU(),
             conv_nd(dims, input_ch, out_channels, 3, padding=1),
         )
 
@@ -1125,22 +1103,19 @@ class UNetModelConv(nn.Module):
         """
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-
         if lq is not None:
             assert self.cond_lq
             if lq.shape[2:] != x.shape[2:]:
-                lq = F.pixel_unshuffle(lq, 2)
-            x = th.cat([x, lq], dim=1)
-
+                lq = torch.nn.functional.pixel_unshuffle(lq, 2)
+            x = torch.cat([x, lq], dim=1)
         h = x.type(self.dtype)
         for ii, module in enumerate(self.input_blocks):
             h = module(h, emb)
             hs.append(h)
         h = self.middle_block(h, emb)
         for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+            h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
         h = h.type(x.dtype)
         out = self.out(h)
         return out
-
