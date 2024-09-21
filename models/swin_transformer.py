@@ -9,7 +9,7 @@ import torch
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import to_2tuple, trunc_normal_
 
-from basic_ops import normalization
+from .basic_ops import normalization
 
 class Mlp(torch.nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=torch.nn.GELU, drop=0.0):

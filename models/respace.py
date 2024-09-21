@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from gaussian_diffusion import GaussianDiffusion, GaussianDiffusionDDPM
+from .gaussian_diffusion import GaussianDiffusion, GaussianDiffusionDDPM
 
 def space_timesteps(num_timesteps, sample_timesteps):
     """

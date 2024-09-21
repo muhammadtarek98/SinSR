@@ -1,18 +1,12 @@
-import os, sys, math, random
-from torchvision.utils import save_image
-import cv2
+import os,  math, random
+
 import numpy as np
 from pathlib import Path
-from loguru import logger
-from omegaconf import OmegaConf
 from utils import util_net
 from utils import util_image
 from utils import util_common
 
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
-
 from datapipe.datasets import create_dataset
 from utils.util_image import ImageSpliterTh
 
@@ -46,11 +40,8 @@ class BaseSampler:
         if sf is None:
             sf = configs.diffusion.params.sf
         self.sf = sf
-
         self.setup_dist()  # setup distributed training: self.num_gpus, self.rank
-
         self.setup_seed()
-
         self.build_model()
 
     def setup_seed(self, seed=None):
@@ -124,7 +115,7 @@ class Sampler(BaseSampler):
             flag_pad = True
             pad_h = (math.ceil(ori_h / desired_min_size)) * desired_min_size - ori_h
             pad_w = (math.ceil(ori_w / desired_min_size)) * desired_min_size - ori_w
-            y0 = F.pad(y0, pad=(0, pad_w, 0, pad_h), mode='reflect')
+            y0 = torch.nn.functional.pad(y0, pad=(0, pad_w, 0, pad_h), mode='reflect')
         else:
             flag_pad = False
 

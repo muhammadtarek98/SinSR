@@ -1,12 +1,8 @@
-import os, sys
 import argparse
 from pathlib import Path
-
 from omegaconf import OmegaConf
 from sampler import Sampler
-
-from utils.util_opts import str2bool
-from basicsr.utils.download_util import load_file_from_url
+from SinSR.basicsr.utils.download_util import load_file_from_url
 
 def get_parser(**parser_kwargs):
     parser = argparse.ArgumentParser(**parser_kwargs)

@@ -2,9 +2,9 @@ from abc import abstractmethod
 import math
 import numpy as np
 import torch
-from fp16_util import convert_module_to_f16, convert_module_to_f32
-from basic_ops import linear,conv_nd,avg_pool_nd,zero_module,normalization,timestep_embedding
-from swin_transformer import BasicLayer
+from .fp16_util import convert_module_to_f16, convert_module_to_f32
+from .basic_ops import linear,conv_nd,avg_pool_nd,zero_module,normalization,timestep_embedding
+from .swin_transformer import BasicLayer
 
 try:
     import xformers
